@@ -2,9 +2,11 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define START_ADDRESS 0x200
 #define FONTSET_ADDRESS 0x50
+
 uint8_t fontset[80] = {
     0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
     0x20, 0x60, 0x20, 0x20, 0x70, // 1
@@ -34,11 +36,11 @@ typedef struct Chip8 {
   uint8_t delayTimer; // 8 bits for timers
   uint8_t soundTimer;
 
-  uint16_t PC;            // initialize at 0x200 in constructor, program counter
-  uint8_t SP;             // stack pointer
-  uint16_t stack[16];     // stack memory for instruct
-  uint8_t keypad[16];     // keypad size (16 key hexadecimal)
-  uint32_t video[32][64]; // 64 columns (x) and 32 rows(y)
+  uint16_t PC;        // initialize at 0x200 in constructor, program counter
+  uint8_t SP;         // stack pointer
+  uint16_t stack[16]; // stack memory for instruct
+  uint8_t keypad[16]; // keypad size (16 key hexadecimal)
+  uint32_t video[32 * 64]; // 64 columns (x) and 32 rows(y)
 
   uint16_t opcode;
 
@@ -84,3 +86,18 @@ void loadROM(Chip8 *chip8, const char *filepath) {
   }
   free(buffer);
 }
+
+// Instruction 00E0
+void clearScreen(struct Chip8 *chip8) {
+  uint32_t(*videoMem) = chip8->video;
+  memset(videoMem, 0, sizeof(chip8->video));
+}
+// Instruction 1NNN
+void jump(struct Chip8 *chip8) {}
+
+// Instruction 6XNN
+// INSTRUCTION 7XNN
+// INSTRUCTION ANNN
+// INSTRUCTION DXYN
+
+int main(int argc, char **argv) { return 0; }

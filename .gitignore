@@ -42,6 +42,9 @@
 *.idb
 *.pdb
 
+#Chip 8 Roms
+*.ch8
+
 # Kernel Module Compile Results
 *.mod*
 *.cmd
