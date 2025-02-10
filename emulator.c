@@ -95,9 +95,12 @@ void clearScreen(struct Chip8 *chip8) {
 // Instruction 1NNN
 void jump(struct Chip8 *chip8) {}
 
-// Instruction 6XNN
+// Instruction 6XNN/6XKK
+void LD(struct Chip8 *chip8) {}
 // INSTRUCTION 7XNN
+void ADD(struct Chip8 *chip8) {}
 // INSTRUCTION ANNN
+void LD_I(struct Chip8 *chip8) {}
 // INSTRUCTION DXYN
-
+void DRAW(struct Chip8 *chip8) {}
 int main(int argc, char **argv) { return 0; }
