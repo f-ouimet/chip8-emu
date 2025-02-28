@@ -13,7 +13,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
+#ifdef _WIN32
+  char* OS = "Windows";
+#elif __linux__
+  char* OS = "Linux";
+#else
+  char* OS = "other";
+#endif
 #define START_ADDRESS 0x200  // offset for ram
 #define FONTSET_ADDRESS 0x50 // reserved mem space
 
@@ -173,11 +179,19 @@ void DRAW(struct Chip8 *chip8, uint16_t opcode) {
   // chip8->Vregs[15] = 1; if collision
 }
 
+void clear_console() {
+  if (strcmp(OS, "Windows") == 0) {system("cls");}
+  else{system("clear");}
+}
+
 void draw_console(struct Chip8 *chip8) {
+  clear_console();
   for (unsigned int i = 0; i < 64 * 32; ++i) {
     // Print a block character for set pixels, otherwise a space
     if (chip8->video[i] == 1) {
-      printf("▮"); // other char options: █ ■
+      if (strcmp(OS, "Windows") == 0) {printf("#");}
+      else{printf("█");}
+       // other char options: █ ■ ▮ ▓
     } else {
       printf(" ");
     }
@@ -187,8 +201,8 @@ void draw_console(struct Chip8 *chip8) {
       printf("\n");
     }
   }
-  system("clear");
 }
+
 
 /**
  *
@@ -278,7 +292,9 @@ int main(int argc, char **argv) {
    */
   printf("Loading ROM: %s\n", argv[1]);
   loadROM(chip8, argv[1]);
-  system("clear");
+  if (strcmp(OS, "Windows") == 0) {system("cls");}
+  else{system("clear");}
+
 
   // Emulator loop below
   while (1) {
