@@ -14,8 +14,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define START_ADDRESS 0x200 //offset for ram
-#define FONTSET_ADDRESS 0x50 //reserved mem space
+#define START_ADDRESS 0x200  // offset for ram
+#define FONTSET_ADDRESS 0x50 // reserved mem space
 
 uint8_t fontset[80] = {
     0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
@@ -49,16 +49,17 @@ typedef struct Chip8 {
   uint8_t delayTimer; // 8 bits regs for timers
   uint8_t soundTimer;
 
-  uint16_t PC;        // initialize at 0x200 in constructor, program counter
+  uint16_t PC; // initialize at 0x200 in constructor, program counter
 
-  //The stack is an array of 16 16-bit values, used to store the address that the interpreter
+  // The stack is an array of 16 16-bit values, used to store the address that
+  // the interpreter
   //...should return to when finished with a subroutine.
-  //Chip-8 allows for up to 16 levels of nested subroutines.
+  // Chip-8 allows for up to 16 levels of nested subroutines.
   uint8_t SP;         // stack pointer
   uint16_t stack[16]; // stack memory for instruct
 
   uint8_t keypad[16]; // keypad size (16 key hexadecimal)
-  //Array for display, 2d grid flattened in 1d
+  // Array for display, 2d grid flattened in 1d
   uint32_t video[64 * 32]; // 64 columns (x) and 32 rows(y)
 
   uint16_t opcode;
@@ -81,10 +82,11 @@ struct Chip8 *chip8_new() {
 
   return result;
 }
-//Clears allocated memory
+// Clears allocated memory
 void chip8_delete(struct Chip8 *chip8) { free(chip8); }
 
-/**Loads rom file in a buffer that is then placed in virtual RAM at the START_ADDRESS
+/**Loads rom file in a buffer that is then placed in virtual RAM at the
+ *START_ADDRESS
  *
  *@param chip8
  *@param filepath
@@ -120,7 +122,7 @@ void clearScreen(struct Chip8 *chip8) {
 }
 // Instruction 1NNN
 void jump(struct Chip8 *chip8, uint16_t opcode) {
-  const uint16_t address = opcode & 0x0FFF; //we keep last 3 hex digits
+  const uint16_t address = opcode & 0x0FFF; // we keep last 3 hex digits
   chip8->PC = address;
 }
 
@@ -145,15 +147,14 @@ void DRAW(struct Chip8 *chip8, uint16_t opcode) {
   const uint8_t Vx = (opcode & 0x0F00) >> 8;
   const uint8_t Vy = (opcode & 0x00F0) >> 4;
 
-  const uint8_t x = chip8->Vregs[Vx] % 64;  // Wrap around if x > 63
-  const uint8_t y = chip8->Vregs[Vy] % 32;  // Wrap around if y > 31
-
+  const uint8_t x = chip8->Vregs[Vx] % 64; // Wrap around if x > 63
+  const uint8_t y = chip8->Vregs[Vy] % 32; // Wrap around if y > 31
 
   const uint8_t n = opcode & 0x000F;
   chip8->Vregs[0xF] = 0;
 
   for (int i = 0; i < n; i++) {
-    const uint8_t data = chip8->mem[chip8->Ireg+i];
+    const uint8_t data = chip8->mem[chip8->Ireg + i];
     for (int j = 0; j < 8; j++) {
       if (data & (0x80 >> j)) {
         const int screenX = (x + j) % 64;
@@ -169,14 +170,14 @@ void DRAW(struct Chip8 *chip8, uint16_t opcode) {
     }
   }
 
-  //chip8->Vregs[15] = 1; if collision
+  // chip8->Vregs[15] = 1; if collision
 }
 
-void draw_console(struct Chip8 *chip8, uint16_t opcode) {
+void draw_console(struct Chip8 *chip8) {
   for (unsigned int i = 0; i < 64 * 32; ++i) {
     // Print a block character for set pixels, otherwise a space
     if (chip8->video[i] == 1) {
-      printf("▮");
+      printf("▮"); // other char options: █ ■
     } else {
       printf(" ");
     }
@@ -186,6 +187,7 @@ void draw_console(struct Chip8 *chip8, uint16_t opcode) {
       printf("\n");
     }
   }
+  system("clear");
 }
 
 /**
@@ -195,60 +197,66 @@ void draw_console(struct Chip8 *chip8, uint16_t opcode) {
  */
 void exec_instruction(struct Chip8 *chip8, const uint16_t opcode) {
   switch (opcode >> 12 & 0xF) {
-    case 0x0: {
-      if (opcode == 0x00E0) {
-        clearScreen(chip8);
-      }
-      else if (opcode == 0x00EE) {
-        //RET
-        //The interpreter sets the program counter to the address at the top of the stack,
-        //then subtracts 1 from the stack pointer.
+  case 0x0: {
+    if (opcode == 0x00E0) {
+      clearScreen(chip8);
+    } else if (opcode == 0x00EE) {
+      // RET
+      // The interpreter sets the program counter to the address at the top of
+      // the stack, then subtracts 1 from the stack pointer.
 
-      }
-      else {
-        //SYS addr
-      }
-      break;
+    } else {
+      // SYS addr
     }
-    case 0x1: {
-      //1NNN
-      jump(chip8, opcode);
-      break;
-    }
-    case 0x2: {
-      break;
-    }
-    case 0x3:break;
-    case 0x4:break;
-    case 0x5:break;
-    case 0x6: {
-      LD(chip8,opcode);
-      break;
-    }
-    case 0x7: {
-      ADD(chip8,opcode);
-      break;
-    }
-    case 0x8:break;
-    case 0x9:break;
-    case 0xA: {
-      LD_I(chip8,opcode);
-      break;
-    }
-    case 0xB:break;
-    case 0xC:break;
-    case 0xD: {
-      DRAW(chip8, opcode);
-      break;
-    }
-    case 0xE:break;
-    case 0xF:break;
-    default: {
-      printf("Invalid opcode");
-      printf("opcode = %04x\n", opcode);
-      exit(EXIT_FAILURE);
-    }
-
+    break;
+  }
+  case 0x1: {
+    // 1NNN
+    jump(chip8, opcode);
+    break;
+  }
+  case 0x2: {
+    break;
+  }
+  case 0x3:
+    break;
+  case 0x4:
+    break;
+  case 0x5:
+    break;
+  case 0x6: {
+    LD(chip8, opcode);
+    break;
+  }
+  case 0x7: {
+    ADD(chip8, opcode);
+    break;
+  }
+  case 0x8:
+    break;
+  case 0x9:
+    break;
+  case 0xA: {
+    LD_I(chip8, opcode);
+    break;
+  }
+  case 0xB:
+    break;
+  case 0xC:
+    break;
+  case 0xD: {
+    DRAW(chip8, opcode);
+    break;
+  }
+  case 0xE:
+    break;
+  case 0xF:
+    break;
+  default: {
+    printf("Invalid opcode");
+    printf("opcode = %04x\n", opcode);
+    exit(EXIT_FAILURE);
+  }
   }
 }
 
@@ -265,24 +273,25 @@ int main(int argc, char **argv) {
   }
   struct Chip8 *chip8 = chip8_new();
   /*Clear the terminal screen for program initialization with xterm
-     *Alternatively
-     *#define clear() printf("\033[H\033[J")
-     */
+   *Alternatively
+   *#define clear() printf("\033[H\033[J")
+   */
   printf("Loading ROM: %s\n", argv[1]);
-  loadROM(chip8,argv[1]);
-  printf("\033[2J");
+  loadROM(chip8, argv[1]);
+  system("clear");
 
   // Emulator loop below
   while (1) {
     // Fetch opcode (16 bits) using program counter
-    const uint16_t opcode = chip8->mem[chip8->PC] << 8 | chip8->mem[chip8->PC+1];
+    const uint16_t opcode =
+        chip8->mem[chip8->PC] << 8 | chip8->mem[chip8->PC + 1];
     chip8->PC += 2;
-    //Test print
-    //printf("opcode: %04x\n", opcode);
-    //Exec the code
+    // Test print
+    // printf("opcode: %04x\n", opcode);
+    // Exec the code
     exec_instruction(chip8, opcode);
-
+    draw_console(chip8);
   }
-  //exit success
+  // exit success
   exit(0);
 }
