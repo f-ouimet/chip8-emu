@@ -123,9 +123,10 @@ void loadROM(Chip8 *chip8, const char *filepath) {
 }
 
 // Instruction 00E0
-void clearScreen(struct Chip8 *chip8) {
+void clear_screen(struct Chip8 *chip8) {
   memset(chip8->video, 0, sizeof(chip8->video));
 }
+
 // Instruction 1NNN
 void jump(struct Chip8 *chip8, uint16_t opcode) {
   const uint16_t address = opcode & 0x0FFF; // we keep last 3 hex digits
@@ -184,7 +185,7 @@ void clear_console() {
   else{system("clear");}
 }
 
-void draw_console(struct Chip8 *chip8) {
+void draw_console(const struct Chip8 *chip8) { //TODO: make more fluid by printing line instead of char
   clear_console();
   for (unsigned int i = 0; i < 64 * 32; ++i) {
     // Print a block character for set pixels, otherwise a space
@@ -209,18 +210,20 @@ void draw_console(struct Chip8 *chip8) {
  * @param chip8 our Chip8 instance
  * @param opcode current operation code
  */
+//TODO: TEST ALL INSTRUCTIONS
 void exec_instruction(struct Chip8 *chip8, const uint16_t opcode) {
   switch (opcode >> 12 & 0xF) {
   case 0x0: {
     if (opcode == 0x00E0) {
-      clearScreen(chip8);
+      clear_screen(chip8);
     } else if (opcode == 0x00EE) {
       // RET
       // The interpreter sets the program counter to the address at the top of
       // the stack, then subtracts 1 from the stack pointer.
-
+      chip8->SP--;
+      chip8->PC = chip8->stack[chip8->SP];
     } else {
-      // SYS addr
+      // SYS addr, ignored by modern computer
     }
     break;
   }
@@ -230,14 +233,44 @@ void exec_instruction(struct Chip8 *chip8, const uint16_t opcode) {
     break;
   }
   case 0x2: {
+    //CALL
+    chip8->SP++;
+    chip8->stack[chip8->SP] = chip8->PC;
+    chip8->PC = opcode & 0x0FFF;
     break;
   }
-  case 0x3:
+    //SE Vx byte]
+  case 0x3: {
+    uint8_t x = opcode & 0x0F00;
+    x = x >> 8;
+    const uint8_t y = opcode & 0x00FF;
+    if (chip8->Vregs[x] == y) {
+      chip8->PC=+2;
+    }
     break;
-  case 0x4:
+  }
+    //SNE Vx byte
+  case 0x4: {
+    uint8_t x = opcode & 0x0F00;
+    x = x >> 8;
+    const uint8_t y = opcode & 0x00FF;
+    if (chip8->Vregs[x] == y) {
+      chip8->PC=+2;
+    }
     break;
-  case 0x5:
+  }
+    //SE Vx Vy
+  case 0x5: {
+    uint8_t x = opcode & 0x0F00;
+    x = x >> 8;
+    uint8_t y = opcode >> 0x00F0;
+    y = y >> 4;
+    if (chip8->Vregs[x] == chip8->Vregs[y]) {
+      chip8->PC=+2;
+    }
     break;
+  }
+    //LD value in reg
   case 0x6: {
     LD(chip8, opcode);
     break;
@@ -246,26 +279,113 @@ void exec_instruction(struct Chip8 *chip8, const uint16_t opcode) {
     ADD(chip8, opcode);
     break;
   }
-  case 0x8:
+  case 0x8: {
+    //Vregs[0xF] is used as carry bit for the operations here
+    const uint8_t sub_op = opcode & 0x000F;
+    uint8_t x = opcode & 0x0F00 >> 8;
+    uint8_t y = opcode & 0x00F0 >> 4;
+    switch (sub_op) {
+      //LD value of reg y in reg x
+      case 0x0: {
+        chip8->Vregs[x] = chip8->Vregs[y];
+        break;
+      }
+      //OR
+      case 0x1: {
+        chip8->Vregs[x] |= chip8->Vregs[y];
+        break;
+      }
+      //AND
+      case 0x2: {
+        chip8->Vregs[x] &= chip8->Vregs[y];
+        break;
+      }
+      //XOR
+      case 0x3: {
+        chip8->Vregs[x] ^= chip8->Vregs[y];
+        break;
+      }
+      //ADD
+      case 0x4: {
+        const uint16_t total = chip8->Vregs[x] + chip8->Vregs[y];
+        if (total > 0xFF)
+          chip8->Vregs[0xF] = 1;
+        else
+          chip8->Vregs[0xF] = 0;
+        chip8->Vregs[x] = total & 0xFF;
+      }
+      //SUB
+      case 0x5:{
+        if (chip8->Vregs[x] > chip8->Vregs[y])
+          chip8->Vregs[0xF] = 1;
+        else
+          chip8->Vregs[0xF] = 0;
+        chip8->Vregs[x] = chip8->Vregs[x] - chip8->Vregs[y];
+        break;
+      }
+      //SHR
+      case 0x6: {
+        if (chip8->Vregs[x] % 2 == 1)
+          chip8->Vregs[0xF] = 1;
+        else
+          chip8->Vregs[0xF] = 0;
+        chip8->Vregs[x] = chip8->Vregs[x] / 2;
+      }
+      //SUBN
+      case 0x7: {
+        if (chip8->Vregs[y] > chip8->Vregs[x])
+          chip8->Vregs[0xF] = 1;
+        else
+          chip8->Vregs[0xF] = 0;
+        chip8->Vregs[x] = chip8->Vregs[y]-chip8->Vregs[x];
+      }
+      //SHL
+      case 0xE: {
+        if ((chip8->Vregs[x] & 0x80) == 0x80)
+          chip8->Vregs[0xF] = 1;
+        else
+          chip8->Vregs[0xF] = 0;
+        chip8->Vregs[x] = chip8->Vregs[x] * 2;
+        break;
+      }
+      default: {
+        printf("Invalid opcode");
+        printf("opcode = %04x\n", opcode);
+        exit(EXIT_FAILURE);
+      }
+    }
     break;
-  case 0x9:
+  }
+  case 0x9: {
+    uint8_t x = opcode & 0x0F00;
+    x = x >> 8;
+    uint8_t y = opcode >> 0x00F0;
+    y = y >> 4;
+    if (chip8->Vregs[x] != chip8->Vregs[y]) {
+      chip8->PC=+2;
+    }
     break;
+  }
   case 0xA: {
     LD_I(chip8, opcode);
     break;
   }
-  case 0xB:
+  case 0xB: {
     break;
-  case 0xC:
+  }
+  case 0xC: {
     break;
+  }
   case 0xD: {
     DRAW(chip8, opcode);
     break;
   }
-  case 0xE:
+  case 0xE: {
     break;
-  case 0xF:
+  }
+  case 0xF: {
     break;
+  }
   default: {
     printf("Invalid opcode");
     printf("opcode = %04x\n", opcode);
@@ -276,9 +396,9 @@ void exec_instruction(struct Chip8 *chip8, const uint16_t opcode) {
 
 /**
  *
- * @param argc
- * @param argv
- * @return
+ * @param argc arg count
+ * @param argv should be <program> , <ROM file path>
+ * @return 1 if exit_failure, 0 if exit_success
  */
 int main(int argc, char **argv) {
   if (argc != 2) {
@@ -286,17 +406,17 @@ int main(int argc, char **argv) {
     exit(1);
   }
   struct Chip8 *chip8 = chip8_new();
-  /*Clear the terminal screen for program initialization with xterm
+
+  printf("Loading ROM: %s\n", argv[1]);
+  loadROM(chip8, argv[1]);
+  /*Clear the terminal screen for program initialization
    *Alternatively
    *#define clear() printf("\033[H\033[J")
    */
-  printf("Loading ROM: %s\n", argv[1]);
-  loadROM(chip8, argv[1]);
-  if (strcmp(OS, "Windows") == 0) {system("cls");}
-  else{system("clear");}
+  clear_console();
 
 
-  // Emulator loop below
+  // Main cpu loop below
   while (1) {
     // Fetch opcode (16 bits) using program counter
     const uint16_t opcode =
@@ -307,7 +427,16 @@ int main(int argc, char **argv) {
     // Exec the code
     exec_instruction(chip8, opcode);
     draw_console(chip8);
+    //sound impl:
+    //printf("\a");
+    //alternatives:
+    //windows.h Beep
+    //Linux:
+    // int fd = open("/dev/tty", O_WRONLY);
+    // if (fd != -1) {
+    //   write(fd, "\a", 1);
+    //   close(fd);
+    // }
   }
-  // exit success
-  exit(0);
+  //if exit command is implemented: exit(0);
 }
