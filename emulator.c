@@ -13,6 +13,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <Windows.h>
 #ifdef _WIN32
   char* OS = "Windows";
 #elif __linux__
@@ -46,14 +50,14 @@ uint8_t fontset[80] = {
 /**
  * struct to emulate a Chip8 computer.
  */
-typedef struct Chip8 {
+typedef struct chip_8_ {
   // 4 kb of mem
   uint8_t mem[4096];
   // 16 8 bit regs
   uint8_t Vregs[16];  // args V0 to VF
   uint16_t Ireg;      // 16 bits to store mem addresses
-  uint8_t delayTimer; // 8 bits regs for timers
-  uint8_t soundTimer;
+  uint8_t delay_timer; // 8 bits regs for timers
+  uint8_t sound_timer;
 
   uint16_t PC; // initialize at 0x200 in constructor, program counter
 
@@ -69,6 +73,7 @@ typedef struct Chip8 {
   uint32_t video[64 * 32]; // 64 columns (x) and 32 rows(y)
 
   uint16_t opcode;
+  uint8_t keyboard[16];
 
 } Chip8;
 
@@ -76,8 +81,8 @@ typedef struct Chip8 {
  * Constructor that allocates memory and returns pointer.
  * @return
  */
-struct Chip8 *chip8_new() {
-  struct Chip8 *result = (struct Chip8 *)malloc(sizeof(Chip8));
+struct chip_8_ *chip8_new() {
+  struct chip_8_ *result = (struct chip_8_ *)malloc(sizeof(Chip8));
   result->PC = START_ADDRESS;
 
   for (unsigned int i = 0; i < 80; ++i) {
@@ -89,7 +94,7 @@ struct Chip8 *chip8_new() {
   return result;
 }
 // Clears allocated memory
-void chip8_delete(struct Chip8 *chip8) { free(chip8); }
+void chip8_delete(struct chip_8_ *chip8) { free(chip8); }
 
 /**Loads rom file in a buffer that is then placed in virtual RAM at the
  *START_ADDRESS
@@ -123,34 +128,34 @@ void loadROM(Chip8 *chip8, const char *filepath) {
 }
 
 // Instruction 00E0
-void clear_screen(struct Chip8 *chip8) {
+void clear_screen(struct chip_8_ *chip8) {
   memset(chip8->video, 0, sizeof(chip8->video));
 }
 
 // Instruction 1NNN
-void jump(struct Chip8 *chip8, uint16_t opcode) {
+void jump(struct chip_8_ *chip8, uint16_t opcode) {
   const uint16_t address = opcode & 0x0FFF; // we keep last 3 hex digits
   chip8->PC = address;
 }
 
 // Instruction 6XNN/6XKK
-void LD(struct Chip8 *chip8, uint16_t opcode) {
+void LD(struct chip_8_ *chip8, uint16_t opcode) {
   const uint8_t kk_value = opcode & 0xFF;
   const uint8_t x = (opcode >> 8) & 0xF;
   chip8->Vregs[x] = kk_value;
 }
 // INSTRUCTION 7XNN
-void ADD(struct Chip8 *chip8, uint16_t opcode) {
+void ADD(struct chip_8_ *chip8, uint16_t opcode) {
   const uint8_t nn_value = opcode & 0xFF;
   const uint8_t x = (opcode >> 8) & 0xF;
   chip8->Vregs[x] += nn_value;
 }
 // INSTRUCTION ANNN
-void LD_I(struct Chip8 *chip8, uint16_t opcode) {
+void LD_I(struct chip_8_ *chip8, uint16_t opcode) {
   chip8->Ireg = opcode & 0x0FFF;
 }
 // INSTRUCTION DXYN
-void DRAW(struct Chip8 *chip8, uint16_t opcode) {
+void DRAW(struct chip_8_ *chip8, uint16_t opcode) {
   const uint8_t Vx = (opcode & 0x0F00) >> 8;
   const uint8_t Vy = (opcode & 0x00F0) >> 4;
 
@@ -185,7 +190,7 @@ void clear_console() {
   else{system("clear");}
 }
 
-void draw_console(const struct Chip8 *chip8) { //TODO: make more fluid by printing line instead of char
+void draw_console(const struct chip_8_ *chip8) { //TODO: make more fluid by printing line instead of char
   clear_console();
   for (unsigned int i = 0; i < 64 * 32; ++i) {
     // Print a block character for set pixels, otherwise a space
@@ -204,6 +209,60 @@ void draw_console(const struct Chip8 *chip8) { //TODO: make more fluid by printi
   }
 }
 
+/**
+ * translates a keypress on keyboard to a chip8 value keypress
+ * keys mapped as: rows are 1, q, a, z
+ *                columns are 1, 2, 3, 4
+ * chip8 keyboard:
+ * 1 2 3 C
+ * 4 5 6 D
+ * 7 8 9 E
+ * A 0 B F
+ * @param key the key pressed on our actual keyboard
+ * @return value of key in CHIP-8 hex keyboard
+ */
+uint8_t chip8_keypress(struct chip_8_ *chip8, const int key) {
+  chip8->keypad[key] = 0;
+  switch (key) {
+    case'1':
+      return 0x1;
+    case'2':
+      return 0x2;
+    case'3':
+      return 0x3;
+    case'4':
+      return 0xC;
+    case'q':
+      return 0x4;
+    case'w':
+      return 0x5;
+    case'e':
+      return 0x6;
+    case'r':
+      return 0xD;
+    case'a':
+      return 0x7;
+    case's':
+      return 0x8;
+    case'd':
+      return 0x9;
+    case'f':
+      return 0xE;
+    case'z':
+      return 0xA;
+    case'x':
+      return 0x0;
+    case'c':
+      return 0xB;
+    case'v':
+      return 0xF;
+    default:{
+      chip8->PC -=2;//need to execute instruction again
+      return 0xFF;//junk value
+    }
+  }
+
+}
 
 /**
  *
@@ -211,7 +270,7 @@ void draw_console(const struct Chip8 *chip8) { //TODO: make more fluid by printi
  * @param opcode current operation code
  */
 //TODO: TEST ALL INSTRUCTIONS
-void exec_instruction(struct Chip8 *chip8, const uint16_t opcode) {
+void exec_instruction(struct chip_8_ *chip8, const uint16_t opcode) {
   switch (opcode >> 12 & 0xF) {
   case 0x0: {
     if (opcode == 0x00E0) {
@@ -239,10 +298,9 @@ void exec_instruction(struct Chip8 *chip8, const uint16_t opcode) {
     chip8->PC = opcode & 0x0FFF;
     break;
   }
-    //SE Vx byte]
+    //SE Vx byte
   case 0x3: {
-    uint8_t x = opcode & 0x0F00;
-    x = x >> 8;
+    const uint8_t x = opcode & 0x0F00 >> 8;
     const uint8_t y = opcode & 0x00FF;
     if (chip8->Vregs[x] == y) {
       chip8->PC=+2;
@@ -251,8 +309,7 @@ void exec_instruction(struct Chip8 *chip8, const uint16_t opcode) {
   }
     //SNE Vx byte
   case 0x4: {
-    uint8_t x = opcode & 0x0F00;
-    x = x >> 8;
+    const uint8_t x = opcode & 0x0F00 >> 8;;
     const uint8_t y = opcode & 0x00FF;
     if (chip8->Vregs[x] == y) {
       chip8->PC=+2;
@@ -261,10 +318,9 @@ void exec_instruction(struct Chip8 *chip8, const uint16_t opcode) {
   }
     //SE Vx Vy
   case 0x5: {
-    uint8_t x = opcode & 0x0F00;
-    x = x >> 8;
-    uint8_t y = opcode >> 0x00F0;
-    y = y >> 4;
+    const uint8_t x = opcode & 0x0F00 >> 8;
+    const uint8_t y = opcode & 0x00F0 >> 4;
+
     if (chip8->Vregs[x] == chip8->Vregs[y]) {
       chip8->PC=+2;
     }
@@ -280,10 +336,10 @@ void exec_instruction(struct Chip8 *chip8, const uint16_t opcode) {
     break;
   }
   case 0x8: {
-    //Vregs[0xF] is used as carry bit for the operations here
+    //V regs[0xF] is used as carry bit for the operations here
     const uint8_t sub_op = opcode & 0x000F;
-    uint8_t x = opcode & 0x0F00 >> 8;
-    uint8_t y = opcode & 0x00F0 >> 4;
+    const uint8_t x = opcode & 0x0F00 >> 8;
+    const uint8_t y = opcode & 0x00F0 >> 4;
     switch (sub_op) {
       //LD value of reg y in reg x
       case 0x0: {
@@ -357,10 +413,8 @@ void exec_instruction(struct Chip8 *chip8, const uint16_t opcode) {
     break;
   }
   case 0x9: {
-    uint8_t x = opcode & 0x0F00;
-    x = x >> 8;
-    uint8_t y = opcode >> 0x00F0;
-    y = y >> 4;
+    const uint8_t x = opcode & 0x0F00 >> 8;
+    const uint8_t y = opcode & 0x00F0 >> 4;
     if (chip8->Vregs[x] != chip8->Vregs[y]) {
       chip8->PC=+2;
     }
@@ -371,19 +425,102 @@ void exec_instruction(struct Chip8 *chip8, const uint16_t opcode) {
     break;
   }
   case 0xB: {
+    const uint16_t addr = opcode & 0x0FFF;
+    chip8->PC = addr + chip8->Vregs[0x0];
     break;
   }
   case 0xC: {
+    const uint8_t x = opcode & 0x0F00 >> 8;
+    const uint8_t num = opcode & 0x00FF;
+    uint8_t rand_num = rand() % 256; //rand() % (max - min + 1) + min; // NOLINT(cert-msc30-c, cert-msc50-cpp)
+    rand_num = rand_num & num;
+    chip8->Vregs[x] = rand_num;
     break;
   }
   case 0xD: {
     DRAW(chip8, opcode);
     break;
   }
+    //DOWN = 1, UP = 0. Keyboard is mapped directly to value : key 1 is keyboard[1]
+    //so if key 1 is pressed (down), keyboard[1] = 1
   case 0xE: {
+    const uint8_t sub_op = opcode & 0xFF;
+    const uint8_t x = (opcode & 0x0F00) >> 8;
+    if (sub_op == 0x9E) {
+      if (chip8->keyboard[chip8->Vregs[x]] == 1)
+        chip8->PC += 2;
+    }
+    else if (sub_op == 0xA1) {
+      if (chip8->keyboard[chip8->Vregs[x]] == 0)
+        chip8->PC += 2;
+    }
+    else {
+      printf("Invalid opcode");
+      printf("opcode = %04x\n", opcode);
+      exit(EXIT_FAILURE);
+    }
     break;
   }
   case 0xF: {
+    const uint8_t sub_op = opcode & 0xFF;
+    const uint8_t x = (opcode & 0x0F00) >> 8;
+    switch (sub_op) {
+      case 0x07: {
+        chip8->Vregs[x] = chip8->delay_timer;
+        break;
+      }
+      //wait for keypress
+      case 0x0A: {
+        uint8_t key_value = chip8_keypress(chip8,getchar());
+        if (key_value < 16) {
+          chip8->keyboard[key_value] = 1; //key was pressed
+          chip8->Vregs[x] = key_value;
+        }
+        break;
+      }
+      case 0x15: {
+        chip8->delay_timer = chip8->Vregs[x];
+        break;
+      }
+      case 0x18: {
+        chip8->sound_timer = chip8->Vregs[x];
+        break;
+      }
+      case 0x1E: {
+        chip8->Ireg = chip8->Vregs[x]+ chip8->Ireg;
+        break;
+      }
+      case 0x29: {
+        const uint8_t digit = chip8->Vregs[x];
+        chip8->Ireg = FONTSET_ADDRESS+(5*digit); //5 byte per font
+        //The value of I is set to the location for the hexadecimal sprite corresponding to the value of Vx
+        break;
+      }
+      case 0x33: {
+        uint8_t value = chip8->Vregs[x];
+        chip8->mem[chip8->Ireg+2] = value % 10;
+        value /= 10;
+        chip8->mem[chip8->Ireg+1] = value % 10;
+        value /= 10;
+        chip8->mem[chip8->Ireg] = value % 10;
+        break;
+      }
+      case 0x55: {
+        for (uint8_t i = 0; i <= x; ++i)
+        {
+          chip8->mem[chip8->Ireg + i] = chip8->Vregs[i];
+        }
+
+        break;
+      }
+      case 0x65: {
+        for (uint8_t i = 0; i <= x; ++i)
+        {
+          chip8->Vregs[i] = chip8->mem[chip8->Ireg + i];
+        }
+        break;
+      }
+    }
     break;
   }
   default: {
@@ -400,12 +537,13 @@ void exec_instruction(struct Chip8 *chip8, const uint16_t opcode) {
  * @param argv should be <program> , <ROM file path>
  * @return 1 if exit_failure, 0 if exit_success
  */
+
 int main(int argc, char **argv) {
   if (argc != 2) {
     fprintf(stderr, "Usage: %s <ROM file>\n", argv[0]);
     exit(1);
   }
-  struct Chip8 *chip8 = chip8_new();
+  struct chip_8_ *chip8 = chip8_new();
 
   printf("Loading ROM: %s\n", argv[1]);
   loadROM(chip8, argv[1]);
@@ -427,16 +565,32 @@ int main(int argc, char **argv) {
     // Exec the code
     exec_instruction(chip8, opcode);
     draw_console(chip8);
-    //sound impl:
-    //printf("\a");
-    //alternatives:
-    //windows.h Beep
-    //Linux:
-    // int fd = open("/dev/tty", O_WRONLY);
-    // if (fd != -1) {
-    //   write(fd, "\a", 1);
-    //   close(fd);
-    // }
+    if (chip8->delay_timer > 0)
+    {
+      --chip8->delay_timer;
+    }
+
+    // Decrement the sound timer if it's been set
+    if (chip8->sound_timer > 0)
+    {
+      --chip8->sound_timer;
+    }
+    //sound play
+    if (chip8->sound_timer == 0) {
+      if (OS == "Linux") {
+        const int fd = open("/dev/tty", O_WRONLY);
+        if (fd != -1) {
+          write(fd, "\a", 1);
+          close(fd);
+        }
+      }
+    }
+    else if (OS == "Windows") {
+      Beep(2500, 250);
+    }
+    else
+      printf("\a");
+
   }
   //if exit command is implemented: exit(0);
 }
