@@ -9,20 +9,20 @@
  *            https://austinmorlan.com/posts/chip8_emulator/
  *
  */
+#include <fcntl.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <fcntl.h>
 #include <sys/stat.h>
 #include <time.h>
 
 #ifdef _WIN32
-  char* OS = "Windows";
+char *OS = "Windows";
 #elif __linux__
-  char* OS = "Linux";
+char *OS = "Linux";
 #else
-  char* OS = "other";
+char *OS = "other";
 #endif
 #define START_ADDRESS 0x200  // offset for ram
 #define FONTSET_ADDRESS 0x50 // reserved mem space
@@ -54,8 +54,8 @@ typedef struct chip_8_ {
   // 4 kb of mem
   uint8_t mem[4096];
   // 16 8 bit regs
-  uint8_t Vregs[16];  // args V0 to VF
-  uint16_t Ireg;      // 16 bits to store mem addresses
+  uint8_t Vregs[16];   // args V0 to VF
+  uint16_t Ireg;       // 16 bits to store mem addresses
   uint8_t delay_timer; // 8 bits regs for timers
   uint8_t sound_timer;
 
@@ -152,7 +152,7 @@ void ADD(struct chip_8_ *chip8, uint16_t opcode) {
 }
 // INSTRUCTION ANNN
 void LD_I(struct chip_8_ *chip8, uint16_t opcode) {
-  chip8->Ireg = opcode & 0x0FFF;
+  chip8->Ireg = opcode & 0x0FFFu;
 }
 // INSTRUCTION DXYN
 void DRAW(struct chip_8_ *chip8, uint16_t opcode) {
@@ -186,18 +186,26 @@ void DRAW(struct chip_8_ *chip8, uint16_t opcode) {
 }
 
 void clear_console() {
-  if (strcmp(OS, "Windows") == 0) {system("cls");}
-  else{system("clear");}
+  if (strcmp(OS, "Windows") == 0) {
+    system("cls");
+  } else {
+    system("clear");
+  }
 }
 
-void draw_console(const struct chip_8_ *chip8) { //TODO: make more fluid by printing line instead of char
+void draw_console(
+    const struct chip_8_
+        *chip8) { // TODO: make more fluid by printing line instead of char
   clear_console();
   for (unsigned int i = 0; i < 64 * 32; ++i) {
     // Print a block character for set pixels, otherwise a space
     if (chip8->video[i] == 1) {
-      if (strcmp(OS, "Windows") == 0) {printf("#");}
-      else{printf("█");}
-       // other char options: █ ■ ▮ ▓
+      if (strcmp(OS, "Windows") == 0) {
+        printf("#");
+      } else {
+        printf("█");
+      }
+      // other char options: █ ■ ▮ ▓
     } else {
       printf(" ");
     }
@@ -224,44 +232,43 @@ void draw_console(const struct chip_8_ *chip8) { //TODO: make more fluid by prin
 uint8_t chip8_keypress(struct chip_8_ *chip8, const int key) {
   chip8->keypad[key] = 0;
   switch (key) {
-    case'1':
-      return 0x1;
-    case'2':
-      return 0x2;
-    case'3':
-      return 0x3;
-    case'4':
-      return 0xC;
-    case'q':
-      return 0x4;
-    case'w':
-      return 0x5;
-    case'e':
-      return 0x6;
-    case'r':
-      return 0xD;
-    case'a':
-      return 0x7;
-    case's':
-      return 0x8;
-    case'd':
-      return 0x9;
-    case'f':
-      return 0xE;
-    case'z':
-      return 0xA;
-    case'x':
-      return 0x0;
-    case'c':
-      return 0xB;
-    case'v':
-      return 0xF;
-    default:{
-      chip8->PC -=2;//need to execute instruction again
-      return 0xFF;//junk value
-    }
+  case '1':
+    return 0x1;
+  case '2':
+    return 0x2;
+  case '3':
+    return 0x3;
+  case '4':
+    return 0xC;
+  case 'q':
+    return 0x4;
+  case 'w':
+    return 0x5;
+  case 'e':
+    return 0x6;
+  case 'r':
+    return 0xD;
+  case 'a':
+    return 0x7;
+  case 's':
+    return 0x8;
+  case 'd':
+    return 0x9;
+  case 'f':
+    return 0xE;
+  case 'z':
+    return 0xA;
+  case 'x':
+    return 0x0;
+  case 'c':
+    return 0xB;
+  case 'v':
+    return 0xF;
+  default: {
+    chip8->PC -= 2; // need to execute instruction again
+    return 0xFF;    // junk value
   }
-
+  }
 }
 
 /**
@@ -269,17 +276,17 @@ uint8_t chip8_keypress(struct chip_8_ *chip8, const int key) {
  * @param chip8 our Chip8 instance
  * @param opcode current operation code
  */
-//TODO: TEST ALL INSTRUCTIONS
+// TODO: TEST ALL INSTRUCTIONS
 void exec_instruction(struct chip_8_ *chip8, const uint16_t opcode) {
-  switch (opcode >> 12 & 0xF) {
+  switch (opcode >> 12 & 0xFu) {
   case 0x0: {
-    if (opcode == 0x00E0) {
+    if (opcode == 0x00E0u) {
       clear_screen(chip8);
-    } else if (opcode == 0x00EE) {
+    } else if (opcode == 0x00EEu) {
       // RET
       // The interpreter sets the program counter to the address at the top of
       // the stack, then subtracts 1 from the stack pointer.
-      chip8->SP--;
+      --chip8->SP;
       chip8->PC = chip8->stack[chip8->SP];
     } else {
       // SYS addr, ignored by modern computer
@@ -292,41 +299,41 @@ void exec_instruction(struct chip_8_ *chip8, const uint16_t opcode) {
     break;
   }
   case 0x2: {
-    //CALL
+    // CALL
     chip8->stack[chip8->SP] = chip8->PC;
     ++chip8->SP;
-    chip8->PC = opcode & 0x0FFFu;
+    chip8->PC = (uint16_t)opcode & 0x0FFFu;
     break;
   }
-    //SE Vx byte
+    // SE Vx byte
   case 0x3: {
     const uint8_t x = (opcode & 0x0F00u) >> 8u;
     const uint8_t y = opcode & 0x00FFu;
     if (chip8->Vregs[x] == y) {
-      chip8->PC+=2;
+      chip8->PC += 2;
     }
     break;
   }
-    //SNE Vx byte
+    // SNE Vx byte
   case 0x4: {
     const uint8_t x = (opcode & 0x0F00u) >> 8u;
     const uint8_t y = opcode & 0x00FFu;
     if (chip8->Vregs[x] != y) {
-      chip8->PC+=2;
+      chip8->PC += 2;
     }
     break;
   }
-    //SE Vx Vy
+    // SE Vx Vy
   case 0x5: {
     const uint8_t x = (opcode & 0x0F00u) >> 8u;
     const uint8_t y = (opcode & 0x00F0u) >> 4u;
 
     if (chip8->Vregs[x] == chip8->Vregs[y]) {
-      chip8->PC+=2;
+      chip8->PC += 2;
     }
     break;
   }
-    //LD value in reg
+    // LD value in reg
   case 0x6: {
     LD(chip8, opcode);
     break;
@@ -336,82 +343,88 @@ void exec_instruction(struct chip_8_ *chip8, const uint16_t opcode) {
     break;
   }
   case 0x8: {
-    //V regs[0xF] is used as carry bit for the operations here
+    // V regs[0xF] is used as carry bit for the operations here
     const uint8_t sub_op = opcode & 0x000Fu;
     const uint8_t x = (opcode & 0x0F00u) >> 8u;
     const uint8_t y = (opcode & 0x00F0u) >> 4u;
     switch (sub_op) {
-      //LD value of reg y in reg x
-      case 0x0: {
-        chip8->Vregs[x] = chip8->Vregs[y];
-        break;
+    // LD value of reg y in reg x
+    case 0x0: {
+      chip8->Vregs[x] = chip8->Vregs[y];
+      break;
+    }
+    // OR
+    case 0x1: {
+      chip8->Vregs[x] |= chip8->Vregs[y];
+      break;
+    }
+    // AND
+    case 0x2: {
+      chip8->Vregs[x] &= chip8->Vregs[y];
+      break;
+    }
+    // XOR
+    case 0x3: {
+      chip8->Vregs[x] ^= chip8->Vregs[y];
+      break;
+    }
+    // ADD
+    case 0x4: {
+      const uint16_t total = chip8->Vregs[x] + chip8->Vregs[y];
+      chip8->Vregs[x] = total & 0xFFu;
+      if (total > 0xFFu)
+        chip8->Vregs[0xFu] = 1u;
+      else
+        chip8->Vregs[0xFu] = 0;
+      break;
+    }
+    // SUB
+    case 0x5: {
+      int flag = 0;
+      if (chip8->Vregs[x] > chip8->Vregs[y]) {
+        flag = 1;
       }
-      //OR
-      case 0x1: {
-        chip8->Vregs[x] |= chip8->Vregs[y];
-        break;
-      }
-      //AND
-      case 0x2: {
-        chip8->Vregs[x] &= chip8->Vregs[y];
-        break;
-      }
-      //XOR
-      case 0x3: {
-        chip8->Vregs[x] ^= chip8->Vregs[y];
-        break;
-      }
-      //ADD
-      case 0x4: {
-        const uint16_t total = chip8->Vregs[x] + chip8->Vregs[y];
-        chip8->Vregs[x] = total & 0xFFu;
-        if (total > 0xFFu)
-          chip8->Vregs[0xFu] = 1u;
-        else
-          chip8->Vregs[0xFu] = 0;
-        break;
-      }
-      //SUB
-      case 0x5:{
-        chip8->Vregs[x] = chip8->Vregs[x] - chip8->Vregs[y];
-        if (chip8->Vregs[x] > chip8->Vregs[y])
-          chip8->Vregs[0xFu] = 1u;
-        else
-          chip8->Vregs[0xFu] = 0u;
-        break;
-      }
-      //SHR
-      case 0x6: {
-        chip8->Vregs[x] >>= 1;
-        if (chip8->Vregs[x] % 2 == 1u)
-          chip8->Vregs[0xFu] = 1u;
-        else
-          chip8->Vregs[0xFu] = 0;
-        break;
-      }
-      //SUBN
-      case 0x7: {
-        chip8->Vregs[x] = chip8->Vregs[y] - chip8->Vregs[x];
-        if (chip8->Vregs[y] > chip8->Vregs[x])
-          chip8->Vregs[0xFu] = 1u;
-        else
-          chip8->Vregs[0xFu] = 0u;
-        break;
-      }
-      //SHL
-      case 0xE: {
-        chip8->Vregs[x] = chip8->Vregs[x] * 2;
-        if ((chip8->Vregs[x] & 0x80u) == 0x80u)
-          chip8->Vregs[0xFu] = 1u;
-        else
-          chip8->Vregs[0xFu] = 0u;
-        break;
-      }
-      default: {
-        printf("Invalid opcode");
-        printf("opcode = %04x\n", opcode);
-        exit(EXIT_FAILURE);
-      }
+      if (flag == 1)
+        chip8->Vregs[0xF] = 1u;
+      else
+        chip8->Vregs[0xF] = 0;
+
+      chip8->Vregs[x] -= chip8->Vregs[y];
+
+      break;
+    }
+    // SHR
+    case 0x6: {
+      chip8->Vregs[x] >>= 1;
+      if (chip8->Vregs[x] % 2 == 1u)
+        chip8->Vregs[0xFu] = 1u;
+      else
+        chip8->Vregs[0xFu] = 0;
+      break;
+    }
+    // SUBN
+    case 0x7: {
+      chip8->Vregs[x] = chip8->Vregs[y] - chip8->Vregs[x];
+      if (chip8->Vregs[y] > chip8->Vregs[x])
+        chip8->Vregs[0xFu] = 1u;
+      else
+        chip8->Vregs[0xFu] = 0u;
+      break;
+    }
+    // SHL
+    case 0xE: {
+      chip8->Vregs[x] = chip8->Vregs[x] * 2;
+      if ((chip8->Vregs[x] & 0x80u) == 0x80u)
+        chip8->Vregs[0xFu] = 1u;
+      else
+        chip8->Vregs[0xFu] = 0u;
+      break;
+    }
+    default: {
+      printf("Invalid opcode");
+      printf("opcode = %04x\n", opcode);
+      exit(EXIT_FAILURE);
+    }
     }
     break;
   }
@@ -419,7 +432,7 @@ void exec_instruction(struct chip_8_ *chip8, const uint16_t opcode) {
     const uint8_t x = (opcode & 0x0F00u) >> 8u;
     const uint8_t y = (opcode & 0x00F0u) >> 4u;
     if (chip8->Vregs[x] != chip8->Vregs[y]) {
-      chip8->PC=+2;
+      chip8->PC = +2;
     }
     break;
   }
@@ -435,7 +448,8 @@ void exec_instruction(struct chip_8_ *chip8, const uint16_t opcode) {
   case 0xC: {
     const uint8_t x = (opcode & 0x0F00u) >> 8u;
     const uint8_t num = opcode & 0x00FFu;
-    uint8_t rand_num = rand() % 256; //rand() % (max - min + 1) + min; // NOLINT(cert-msc30-c, cert-msc50-cpp)
+    uint8_t rand_num = rand() % 256; // rand() % (max - min + 1) + min; //
+                                     // NOLINT(cert-msc30-c, cert-msc50-cpp)
     rand_num = rand_num & num;
     chip8->Vregs[x] = rand_num;
     break;
@@ -444,20 +458,18 @@ void exec_instruction(struct chip_8_ *chip8, const uint16_t opcode) {
     DRAW(chip8, opcode);
     break;
   }
-    //DOWN = 1, UP = 0. Keyboard is mapped directly to value : key 1 is keyboard[1]
-    //so if key 1 is pressed (down), keyboard[1] = 1
+    // DOWN = 1, UP = 0. Keyboard is mapped directly to value : key 1 is
+    // keyboard[1] so if key 1 is pressed (down), keyboard[1] = 1
   case 0xE: {
     const uint8_t sub_op = opcode & 0xFFu;
     const uint8_t x = (opcode & 0x0F00u) >> 8u;
     if (sub_op == 0x9E) {
       if (chip8->keyboard[chip8->Vregs[x]] == 1u)
         chip8->PC += 2;
-    }
-    else if (sub_op == 0xA1u) {
+    } else if (sub_op == 0xA1u) {
       if (chip8->keyboard[chip8->Vregs[x]] == 0)
         chip8->PC += 2;
-    }
-    else {
+    } else {
       printf("Invalid opcode");
       printf("opcode = %04x\n", opcode);
       exit(EXIT_FAILURE);
@@ -468,61 +480,60 @@ void exec_instruction(struct chip_8_ *chip8, const uint16_t opcode) {
     const uint8_t sub_op = opcode & 0xFFu;
     const uint8_t x = (opcode & 0x0F00u) >> 8u;
     switch (sub_op) {
-      case 0x07: {
-        chip8->Vregs[x] = chip8->delay_timer;
-        break;
+    case 0x07: {
+      chip8->Vregs[x] = chip8->delay_timer;
+      break;
+    }
+    // wait for keypress
+    case 0x0A: {
+      uint8_t key_value = chip8_keypress(chip8, getchar());
+      if (key_value < 16) {
+        chip8->keyboard[key_value] = 1u; // key was pressed
+        chip8->Vregs[x] = key_value;
       }
-      //wait for keypress
-      case 0x0A: {
-        uint8_t key_value = chip8_keypress(chip8,getchar());
-        if (key_value < 16) {
-          chip8->keyboard[key_value] = 1u; //key was pressed
-          chip8->Vregs[x] = key_value;
-        }
-        break;
+      break;
+    }
+    case 0x15: {
+      chip8->delay_timer = chip8->Vregs[x];
+      break;
+    }
+    case 0x18: {
+      chip8->sound_timer = chip8->Vregs[x];
+      break;
+    }
+    case 0x1E: {
+      chip8->Ireg = chip8->Vregs[x] + chip8->Ireg;
+      break;
+    }
+    case 0x29: {
+      const uint8_t digit = chip8->Vregs[x];
+      chip8->Ireg = FONTSET_ADDRESS + (5 * digit); // 5 byte per font
+      // The value of I is set to the location for the hexadecimal sprite
+      // corresponding to the value of Vx
+      break;
+    }
+    case 0x33: {
+      uint8_t value = chip8->Vregs[x];
+      chip8->mem[chip8->Ireg + 2] = value % 10;
+      value /= 10;
+      chip8->mem[chip8->Ireg + 1] = value % 10;
+      value /= 10;
+      chip8->mem[chip8->Ireg] = value % 10;
+      break;
+    }
+    case 0x55: {
+      for (uint8_t i = 0; i <= x; ++i) {
+        chip8->mem[chip8->Ireg + i] = chip8->Vregs[i];
       }
-      case 0x15: {
-        chip8->delay_timer = chip8->Vregs[x];
-        break;
-      }
-      case 0x18: {
-        chip8->sound_timer = chip8->Vregs[x];
-        break;
-      }
-      case 0x1E: {
-        chip8->Ireg = chip8->Vregs[x]+ chip8->Ireg;
-        break;
-      }
-      case 0x29: {
-        const uint8_t digit = chip8->Vregs[x];
-        chip8->Ireg = FONTSET_ADDRESS+(5*digit); //5 byte per font
-        //The value of I is set to the location for the hexadecimal sprite corresponding to the value of Vx
-        break;
-      }
-      case 0x33: {
-        uint8_t value = chip8->Vregs[x];
-        chip8->mem[chip8->Ireg+2] = value % 10;
-        value /= 10;
-        chip8->mem[chip8->Ireg+1] = value % 10;
-        value /= 10;
-        chip8->mem[chip8->Ireg] = value % 10;
-        break;
-      }
-      case 0x55: {
-        for (uint8_t i = 0; i <= x; ++i)
-        {
-          chip8->mem[chip8->Ireg + i] = chip8->Vregs[i];
-        }
 
-        break;
+      break;
+    }
+    case 0x65: {
+      for (uint8_t i = 0; i <= x; ++i) {
+        chip8->Vregs[i] = chip8->mem[chip8->Ireg + i];
       }
-      case 0x65: {
-        for (uint8_t i = 0; i <= x; ++i)
-        {
-          chip8->Vregs[i] = chip8->mem[chip8->Ireg + i];
-        }
-        break;
-      }
+      break;
+    }
     }
     break;
   }
@@ -544,33 +555,28 @@ void chip8_clock_cycle(struct chip_8_ *chip8) {
   // Exec the code
   exec_instruction(chip8, opcode);
   draw_console(chip8);
-  if (chip8->delay_timer > 0)
-  {
+  if (chip8->delay_timer > 0) {
     --chip8->delay_timer;
   }
 
   // Decrement the sound timer if it's been set
-  if (chip8->sound_timer > 0)
-  {
+  if (chip8->sound_timer > 0) {
     --chip8->sound_timer;
   }
-  //sound play, seems to work
+  // sound play, seems to work
   if (chip8->sound_timer > 0) {
     if (OS == "Linux") {
-      FILE *fd = fopen("/dev/tty", O_WRONLY);
+      FILE *fd = fopen("/dev/tty", "w");
       if (fd != NULL) {
         fwrite("\a", sizeof(char), 1, fd);
         fclose(fd);
       }
-    }
-      else if (OS == "Windows") {
-        //windows sound thing
-      }
-      else
-        printf("\a");
-    }
+    } else if (OS == "Windows") {
+      // windows sound thing
+    } else
+      printf("\a");
+  }
 }
-
 
 /**
  *
@@ -579,7 +585,7 @@ void chip8_clock_cycle(struct chip_8_ *chip8) {
  * @return 1 if exit_failure, 0 if exit_success
  */
 
-//TODO: clock speed, display refresh rate
+// TODO: clock speed, display refresh rate
 int main(const int argc, char **argv) {
   int exit_prog = 0;
   if (argc != 2) {
@@ -598,7 +604,7 @@ int main(const int argc, char **argv) {
   // Main cpu loop below
   while (exit_prog == 0) {
     chip8_clock_cycle(chip8);
-    //clock speed below
+    // clock speed below
     clock_t init = clock();
     clock_t end = 0;
     while (end - init < 5) {
