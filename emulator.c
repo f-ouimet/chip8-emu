@@ -16,7 +16,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <time.h>
-#include <Windows.h>
+
 #ifdef _WIN32
   char* OS = "Windows";
 #elif __linux__
@@ -557,14 +557,14 @@ void chip8_clock_cycle(struct chip_8_ *chip8) {
   //sound play, seems to work
   if (chip8->sound_timer > 0) {
     if (OS == "Linux") {
-      const int fd = open("/dev/tty", O_WRONLY);
-      if (fd != -1) {
-        write(fd, "\a", 1);
-        close(fd);
+      FILE *fd = fopen("/dev/tty", O_WRONLY);
+      if (fd != NULL) {
+        fwrite("\a", sizeof(char), 1, fd);
+        fclose(fd);
       }
     }
       else if (OS == "Windows") {
-        Beep(2500, 166);
+        //windows sound thing
       }
       else
         printf("\a");
