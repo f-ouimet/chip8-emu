@@ -385,43 +385,45 @@ void exec_instruction(struct chip_8_ *chip8, const uint16_t opcode) {
     // SUB
     case 0x5: {
       int flag = 0;
-      if (chip8->Vregs[x] > chip8->Vregs[y]) {
+      if (chip8->Vregs[x] >= chip8->Vregs[y]) {
         flag = 1;
       }
+      chip8->Vregs[x] -= chip8->Vregs[y];
+
       if (flag == 1)
         chip8->Vregs[0xF] = 1u;
       else
         chip8->Vregs[0xF] = 0;
 
-      chip8->Vregs[x] -= chip8->Vregs[y];
-
       break;
     }
     // SHR
     case 0x6: {
-      chip8->Vregs[x] >>= 1;
+      uint8_t flag = 0;
       if (chip8->Vregs[x] % 2 == 1u)
-        chip8->Vregs[0xFu] = 1u;
-      else
-        chip8->Vregs[0xFu] = 0;
+        flag = 1u;
+      chip8->Vregs[x] >>= 1;
+      chip8->Vregs[0xF] = flag;
       break;
     }
     // SUBN
     case 0x7: {
+      int flag = 0;
+      if (chip8->Vregs[y] >= chip8->Vregs[x]) {
+        flag = 1;
+      }
       chip8->Vregs[x] = chip8->Vregs[y] - chip8->Vregs[x];
-      if (chip8->Vregs[y] > chip8->Vregs[x])
-        chip8->Vregs[0xFu] = 1u;
-      else
-        chip8->Vregs[0xFu] = 0u;
+      chip8->Vregs[0xF] = flag;
       break;
     }
     // SHL
     case 0xE: {
-      chip8->Vregs[x] = chip8->Vregs[x] * 2;
+      int flag = 0u;
       if ((chip8->Vregs[x] & 0x80u) == 0x80u)
-        chip8->Vregs[0xFu] = 1u;
-      else
-        chip8->Vregs[0xFu] = 0u;
+        flag = 1u;
+      chip8->Vregs[x] = chip8->Vregs[x] * 2;
+
+      chip8->Vregs[0xF] = flag;
       break;
     }
     default: {
@@ -436,7 +438,7 @@ void exec_instruction(struct chip_8_ *chip8, const uint16_t opcode) {
     const uint8_t x = (opcode & 0x0F00u) >> 8u;
     const uint8_t y = (opcode & 0x00F0u) >> 4u;
     if (chip8->Vregs[x] != chip8->Vregs[y]) {
-      chip8->PC = +2;
+      chip8->PC += 2;
     }
     break;
   }
@@ -657,12 +659,12 @@ int main(const int argc, char **argv) {
     // Clock speed control (adjust as needed)
     clock_t init = clock();
     clock_t end = 0;
-    while (end - init < 5) {
+    while (end - init < 10) {
       chip8_clock_cycle(chip8);
+      draw_console(chip8);
       end = clock();
     }
     memset(chip8->keyboard, 0, sizeof(chip8->keyboard));
-    draw_console(chip8);
   }
 
   // Restore canonical mode and echo before exiting
