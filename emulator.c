@@ -10,12 +10,16 @@
  *
  */
 #include <fcntl.h>
+#include <ncurses.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/select.h>
 #include <sys/stat.h>
+#include <termios.h>
 #include <time.h>
+#include <unistd.h>
 
 #ifdef _WIN32
 char *OS = "Windows";
@@ -215,6 +219,7 @@ void draw_console(
       printf("\n");
     }
   }
+  fflush(stdout);
 }
 
 /**
@@ -229,44 +234,43 @@ void draw_console(
  * @param key the key pressed on our actual keyboard
  * @return value of key in CHIP-8 hex keyboard
  */
-uint8_t chip8_keypress(struct chip_8_ *chip8, const int key) {
-  chip8->keypad[key] = 0;
+uint8_t chip8_keypress(struct chip_8_ *chip8, char key) {
+  memset(chip8->keyboard, 0, sizeof(chip8->keyboard));
   switch (key) {
   case '1':
-    return 0x1;
+    return 0x1u;
   case '2':
-    return 0x2;
+    return 0x2u;
   case '3':
-    return 0x3;
+    return 0x3u;
   case '4':
-    return 0xC;
+    return 0xCu;
   case 'q':
-    return 0x4;
+    return 0x4u;
   case 'w':
-    return 0x5;
+    return 0x5u;
   case 'e':
-    return 0x6;
+    return 0x6u;
   case 'r':
-    return 0xD;
+    return 0xDu;
   case 'a':
-    return 0x7;
+    return 0x7u;
   case 's':
-    return 0x8;
+    return 0x8u;
   case 'd':
-    return 0x9;
+    return 0x9u;
   case 'f':
-    return 0xE;
+    return 0xEu;
   case 'z':
-    return 0xA;
+    return 0xAu;
   case 'x':
-    return 0x0;
+    return 0x0u;
   case 'c':
-    return 0xB;
+    return 0xBu;
   case 'v':
-    return 0xF;
+    return 0xFu;
   default: {
-    chip8->PC -= 2; // need to execute instruction again
-    return 0xFF;    // junk value
+    return 0xFF; // junk value
   }
   }
 }
@@ -486,11 +490,16 @@ void exec_instruction(struct chip_8_ *chip8, const uint16_t opcode) {
     }
     // wait for keypress
     case 0x0A: {
-      uint8_t key_value = chip8_keypress(chip8, getchar());
-      if (key_value < 16) {
-        chip8->keyboard[key_value] = 1u; // key was pressed
-        chip8->Vregs[x] = key_value;
+      int flag = 0;
+      for (int i = 0; i < 16; i++) {
+        if (chip8->keyboard[i] == 1) {
+          chip8->Vregs[x] = i;
+          flag = 1;
+        }
       }
+      if (flag == 0)
+        chip8->PC -= 2;
+      // key wasnt pressed
       break;
     }
     case 0x15: {
@@ -554,7 +563,6 @@ void chip8_clock_cycle(struct chip_8_ *chip8) {
   // printf("opcode: %04x\n", opcode);
   // Exec the code
   exec_instruction(chip8, opcode);
-  draw_console(chip8);
   if (chip8->delay_timer > 0) {
     --chip8->delay_timer;
   }
@@ -578,16 +586,29 @@ void chip8_clock_cycle(struct chip_8_ *chip8) {
   }
 }
 
-/**
- *
- * @param argc arg count
- * @param argv should be <program> , <ROM file path>
- * @return 1 if exit_failure, 0 if exit_success
- */
+void set_nonblocking(int fd) {
+  int flags = fcntl(fd, F_GETFL, 0);
+  fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+}
+// Function to disable canonical mode and echo
+void disable_canonical_mode() {
+  struct termios term;
+  tcgetattr(STDIN_FILENO, &term);
+  term.c_lflag &= ~(ICANON | ECHO); // Disable canonical mode and echo
+  tcsetattr(STDIN_FILENO, TCSANOW, &term);
+}
 
-// TODO: clock speed, display refresh rate
+// Function to restore canonical mode and echo
+void restore_canonical_mode() {
+  struct termios term;
+  tcgetattr(STDIN_FILENO, &term);
+  term.c_lflag |= (ICANON | ECHO); // Restore canonical mode and echo
+  tcsetattr(STDIN_FILENO, TCSANOW, &term);
+}
+
 int main(const int argc, char **argv) {
   int exit_prog = 0;
+  struct timeval tv = {0L, 0L};
   if (argc != 2) {
     fprintf(stderr, "Usage: %s <ROM file>\n", argv[0]);
     exit(1);
@@ -596,23 +617,57 @@ int main(const int argc, char **argv) {
 
   printf("Loading ROM: %s\n", argv[1]);
   loadROM(chip8, argv[1]);
-  /*Clear the terminal screen for program initialization
-   *Alternatively
-   *#define clear() printf("\033[H\033[J")
-   */
   clear_console();
-  // Main cpu loop below
+
+  // Disable canonical mode and echo
+  disable_canonical_mode();
+
+  fd_set fds;
+  set_nonblocking(0);
+
+  // Main CPU loop
   while (exit_prog == 0) {
-    chip8_clock_cycle(chip8);
-    // clock speed below
+    char c = 0;
+    FD_ZERO(&fds);
+    FD_SET(0, &fds);
+    tv.tv_sec = 0;
+    tv.tv_usec = 0; // Non-blocking
+
+    // Check if input is available
+    int ret = select(1, &fds, NULL, NULL, &tv);
+    if (ret > 0) {
+      if (FD_ISSET(STDIN_FILENO, &fds)) {
+        // Read the keypress
+        ssize_t bytes_read = read(STDIN_FILENO, &c, 1);
+        if (bytes_read == 1) {
+          // Map the keypress to CHIP-8 keypad
+          uint8_t keypress = chip8_keypress(chip8, c);
+          if (keypress < 0xFF) {
+            chip8->keyboard[keypress] = 1; // Set key as pressed
+            printf("Key pressed: %c -> %X\n", c, keypress); // Debug print
+          }
+        }
+      }
+    }
+
+    // Execute one clock cycle
+
+    // Clear the keyboard state for the next cycle
+
+    // Clock speed control (adjust as needed)
     clock_t init = clock();
     clock_t end = 0;
     while (end - init < 5) {
+      chip8_clock_cycle(chip8);
       end = clock();
     }
-    end = 0;
-    init = 0;
+    memset(chip8->keyboard, 0, sizeof(chip8->keyboard));
+    draw_console(chip8);
   }
-  free(chip8);
+
+  // Restore canonical mode and echo before exiting
+  restore_canonical_mode();
+
+  chip8_delete(chip8);
   return 0;
 }
