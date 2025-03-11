@@ -565,27 +565,6 @@ void chip8_clock_cycle(struct chip_8_ *chip8) {
   // printf("opcode: %04x\n", opcode);
   // Exec the code
   exec_instruction(chip8, opcode);
-  if (chip8->delay_timer > 0) {
-    --chip8->delay_timer;
-  }
-
-  // Decrement the sound timer if it's been set
-  if (chip8->sound_timer > 0) {
-    --chip8->sound_timer;
-  }
-  // sound play, seems to work
-  if (chip8->sound_timer > 0) {
-    if (OS == "Linux") {
-      FILE *fd = fopen("/dev/tty", "w");
-      if (fd != NULL) {
-        fwrite("\a", sizeof(char), 1, fd);
-        fclose(fd);
-      }
-    } else if (OS == "Windows") {
-      // windows sound thing
-    } else
-      printf("\a");
-  }
 }
 
 void set_nonblocking(int fd) {
@@ -627,49 +606,87 @@ int main(const int argc, char **argv) {
   fd_set fds;
   set_nonblocking(0);
 
-  // Main CPU loop
+  // timers used
+  clock_t frame_init = clock();
+  clock_t frame_end = clock();
+  clock_t cycle_init = clock();
+  clock_t cycle_end = clock();
+
+  // Main interpreter loop
   while (exit_prog == 0) {
+    // int clock_count = 0; if manual clock
     char c = 0;
     FD_ZERO(&fds);
     FD_SET(0, &fds);
     tv.tv_sec = 0;
     tv.tv_usec = 0; // Non-blocking
 
-    // Check if input is available
-    int ret = select(1, &fds, NULL, NULL, &tv);
-    if (ret > 0) {
-      if (FD_ISSET(STDIN_FILENO, &fds)) {
-        // Read the keypress
-        ssize_t bytes_read = read(STDIN_FILENO, &c, 1);
-        if (bytes_read == 1) {
-          // Map the keypress to CHIP-8 keypad
-          uint8_t keypress = chip8_keypress(chip8, c);
-          if (keypress < 0xFF) {
-            chip8->keyboard[keypress] = 1; // Set key as pressed
-            printf("Key pressed: %c -> %X\n", c, keypress); // Debug print
+    // Clock speed control (adjust as needed)
+    // Execute one clock cycle
+    // we need 8-9 cycles per frame for a 500:60 ratio as documented
+    // using this example to get the clock frame_init = clock();
+    //
+    if (cycle_end - cycle_init > 2000) {
+      // Check if input is available
+      int ret = select(1, &fds, NULL, NULL, &tv);
+      if (ret > 0) {
+        if (FD_ISSET(STDIN_FILENO, &fds)) {
+          // Read the keypress
+          ssize_t bytes_read = read(STDIN_FILENO, &c, 1);
+          if (bytes_read == 1) {
+            // Map the keypress to CHIP-8 keypad
+            uint8_t keypress = chip8_keypress(chip8, c);
+            if (keypress < 0xFF) {
+              chip8->keyboard[keypress] = 1; // Set key as pressed
+              // printf("Key pressed: %c -> %X\n", c, keypress); // Debug print
+            }
           }
         }
       }
-    }
-
-    // Execute one clock cycle
-
-    // Clear the keyboard state for the next cycle
-
-    // Clock speed control (adjust as needed)
-    clock_t init = clock();
-    clock_t end = 0;
-    while (end - init < 10) {
       chip8_clock_cycle(chip8);
-      draw_console(chip8);
-      end = clock();
+      cycle_init = clock();
     }
+    cycle_end = clock();
+    frame_end = clock();
+
+    // approx 1 microsecond per clock unit = 60hz here
+    if (frame_end - frame_init > 16667) {
+
+      if (chip8->delay_timer > 0) {
+        --chip8->delay_timer;
+      }
+
+      // Decrement the sound timer if it's been set
+      if (chip8->sound_timer > 0) {
+        --chip8->sound_timer;
+      }
+      // sound play, seems to work
+      if (chip8->sound_timer > 0) {
+        if (strcmp(OS, "Linux") == 0) {
+          FILE *fd = fopen("/dev/tty", "w");
+          if (fd != NULL) {
+            fwrite("\a", sizeof(char), 1, fd); //"prints" a motherboard beep
+            // Needs the terminal to have sound alarms enabled. A flash alarm
+            // will not work.
+            fclose(fd);
+          }
+        } else if (strcmp(OS, "Windows") == 0) {
+          // windows Beep()sound func
+        } else
+          printf("\a");
+      }
+      frame_end = clock();
+      frame_init = clock();
+      draw_console(chip8);
+    }
+    // needs to be every 60 s (adjust whole while loop with clock()) ?
+    // Clear the keyboard state for the next cycle
     memset(chip8->keyboard, 0, sizeof(chip8->keyboard));
   }
 
   // Restore canonical mode and echo before exiting
   restore_canonical_mode();
-
+  // free allocated mem
   chip8_delete(chip8);
   return 0;
 }
