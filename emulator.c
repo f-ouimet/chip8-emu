@@ -357,19 +357,22 @@ void exec_instruction(struct chip_8_ *chip8, const uint16_t opcode) {
       chip8->Vregs[x] = chip8->Vregs[y];
       break;
     }
-    // OR
+      // OR
     case 0x1: {
       chip8->Vregs[x] |= chip8->Vregs[y];
+      chip8->Vregs[0xF] = 0u;
       break;
     }
     // AND
     case 0x2: {
       chip8->Vregs[x] &= chip8->Vregs[y];
+      chip8->Vregs[0xF] = 0u;
       break;
     }
     // XOR
     case 0x3: {
       chip8->Vregs[x] ^= chip8->Vregs[y];
+      chip8->Vregs[0xF] = 0u;
       break;
     }
     // ADD
@@ -497,6 +500,7 @@ void exec_instruction(struct chip_8_ *chip8, const uint16_t opcode) {
         if (chip8->keyboard[i] == 1) {
           chip8->Vregs[x] = i;
           flag = 1;
+          memset(chip8->keyboard, 0, sizeof(chip8->keyboard));
         }
       }
       if (flag == 0)
@@ -536,6 +540,9 @@ void exec_instruction(struct chip_8_ *chip8, const uint16_t opcode) {
       for (uint8_t i = 0; i <= x; ++i) {
         chip8->mem[chip8->Ireg + i] = chip8->Vregs[i];
       }
+      // Original chip8 interpreter incremented I reg
+      // instead of storing in temp
+      //  chip8->Ireg++;
 
       break;
     }
@@ -543,6 +550,8 @@ void exec_instruction(struct chip_8_ *chip8, const uint16_t opcode) {
       for (uint8_t i = 0; i <= x; ++i) {
         chip8->Vregs[i] = chip8->mem[chip8->Ireg + i];
       }
+      // Original chip8 interpreter incremented I reg
+      // chip8->Ireg++;
       break;
     }
     }
@@ -620,6 +629,21 @@ int main(const int argc, char **argv) {
     FD_SET(0, &fds);
     tv.tv_sec = 0;
     tv.tv_usec = 0; // Non-blocking
+    int ret = select(1, &fds, NULL, NULL, &tv);
+    if (ret > 0) {
+      if (FD_ISSET(STDIN_FILENO, &fds)) {
+        // Read the keypress
+        ssize_t bytes_read = read(STDIN_FILENO, &c, 1);
+        if (bytes_read == 1) {
+          // Map the keypress to CHIP-8 keypad
+          uint8_t keypress = chip8_keypress(chip8, c);
+          if (keypress < 0xFF) {
+            chip8->keyboard[keypress] = 1; // Set key as pressed
+            // printf("Key pressed: %c -> %X\n", c, keypress); // Debug print
+          }
+        }
+      }
+    }
 
     // Clock speed control (adjust as needed)
     // Execute one clock cycle
@@ -628,23 +652,9 @@ int main(const int argc, char **argv) {
     //
     if (cycle_end - cycle_init > 2000) {
       // Check if input is available
-      int ret = select(1, &fds, NULL, NULL, &tv);
-      if (ret > 0) {
-        if (FD_ISSET(STDIN_FILENO, &fds)) {
-          // Read the keypress
-          ssize_t bytes_read = read(STDIN_FILENO, &c, 1);
-          if (bytes_read == 1) {
-            // Map the keypress to CHIP-8 keypad
-            uint8_t keypress = chip8_keypress(chip8, c);
-            if (keypress < 0xFF) {
-              chip8->keyboard[keypress] = 1; // Set key as pressed
-              // printf("Key pressed: %c -> %X\n", c, keypress); // Debug print
-            }
-          }
-        }
-      }
       chip8_clock_cycle(chip8);
       cycle_init = clock();
+      // Clear the keyboard state for the next cycle
     }
     cycle_end = clock();
     frame_end = clock();
@@ -678,10 +688,9 @@ int main(const int argc, char **argv) {
       frame_end = clock();
       frame_init = clock();
       draw_console(chip8);
+      memset(chip8->keyboard, 0, sizeof(chip8->keyboard));
     }
     // needs to be every 60 s (adjust whole while loop with clock()) ?
-    // Clear the keyboard state for the next cycle
-    memset(chip8->keyboard, 0, sizeof(chip8->keyboard));
   }
 
   // Restore canonical mode and echo before exiting
