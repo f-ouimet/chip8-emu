@@ -687,9 +687,10 @@ int main(const int argc, char **argv) {
       }
       frame_end = clock();
       frame_init = clock();
-      draw_console(chip8);
       memset(chip8->keyboard, 0, sizeof(chip8->keyboard));
+      draw_console(chip8);
     }
+
     // needs to be every 60 s (adjust whole while loop with clock()) ?
   }
 
